@@ -1,161 +1,100 @@
- /* main.c
-   STM32F411CEU6, HAL-based, FreeRTOS demo:
-   - TaskA, TaskB: same priority -> round-robin time-slicing
-   - TaskHigh: higher priority -> preemptive priority scheduling
-   - MonitorTask: prints vTaskList and optional run-time stats over USART1
-*/
+# RTOS Task Scheduler on STM32
 
-#include "main.h"
-#include "cmsis_os.h"
-#include "string.h"
-#include "stdio.h"
+## Title
+- Implemented round-robin and priority-based task switching using FreeRTOS.
+- Created a mini RTOS visualizer over UART for task status monitoring.
 
-/* HAL UART handle */
-UART_HandleTypeDef huart1;
 
-/* FreeRTOS prototypes */
-void StartTaskA(void *argument);
-void StartTaskB(void *argument);
-void StartTaskHigh(void *argument);
-void StartMonitor(void *argument);
+## Objective	 
+- Designed and implemented a FreeRTOS-based scheduler supporting round-robin and priority-driven task switching, with a UART-based mini RTOS visualizer for real-time task status monitoring and debugging.
 
-/* helper */
-static void MX_USART1_UART_Init(void);
-static void SystemClock_Config(void);
-static void uart_printf(const char *fmt, ...);
 
-/* Buffer sizes */
-#define PRINTF_BUF 256
-#define VTASKLIST_BUF 512
-#define RUNTIME_BUF 512
+## Components required
+- STM32F411CEU6 (Black Pill)
+- USB to UART converter (e.g., CP2102 or FTDI)
+- USB cable (for power and programming)
+- Jumper wires (male-to-male)
+- Breadboard (optional)
+- 3.3V power source (if external supply needed)
+- Host PC with:
+- STM32CubeIDE or arm-none-eabi toolchain
+- Serial terminal (PuTTY / MobaXterm)
+- FreeRTOS source integrated in project
 
-int main(void)
-{
-  HAL_Init();
-  SystemClock_Config();
-  MX_USART1_UART_Init();
+## Connections	
+- STM32F411CEU6 3.3V → USB-UART converter VCC (3.3V)
+- STM32F411CEU6 GND → USB-UART converter GND
+- STM32F411CEU6 PA9 (USART1_TX) → USB-UART converter RXD
+- STM32F411CEU6 PA10 (USART1_RX) → USB-UART converter TXD
+- Micro-USB cable connects STM32 to PC for power and programming
+- USB-UART converter connects to PC for UART visualizer terminal
 
-  /* Create tasks */
-  xTaskCreate(StartTaskA, "TaskA", 128, NULL, tskIDLE_PRIORITY + 1, NULL); /* priority 1 */
-  xTaskCreate(StartTaskB, "TaskB", 128, NULL, tskIDLE_PRIORITY + 1, NULL); /* priority 1 */
-  xTaskCreate(StartTaskHigh, "TaskHigh", 128, NULL, tskIDLE_PRIORITY + 2, NULL); /* priority 2 */
+## Executions	
+- Open STM32CubeIDE and create a new FreeRTOS-based project for STM32F411CEU6.
+- Configure USART1 in asynchronous mode (115200 bps, 8N1).
+- Integrate FreeRTOS by enabling the CMSIS-RTOS interface or adding source files manually.
+- Create multiple tasks with varying priorities for scheduler testing.
+- Implement round-robin behavior by setting equal priorities and enabling time slicing in FreeRTOSConfig.
+- Implement priority-based scheduling by assigning different task priorities.
+- Add UART print statements to transmit task names, states, and CPU time to the terminal.
+- Build and flash the firmware to STM32 via ST-Link.
+- Open PuTTY or MobaXterm terminal at 115200 bps to view live task switching and status logs.
+- Observe scheduler behavior and task transitions in real time on UART output.
+ 
+## Code	
+- Code: complete main.c for STM32F411 (HAL + FreeRTOS) plus required 
+- FreeRTOSConfig.h snippets. 
+- This creates three demo tasks (two equal-priority round-robin, one higher-priority), and a Monitor task that prints task list and optional runtime stats over UART1 (115200, 8N1). 
 
-  /* Monitor task: lower priority so it runs when cpu is free */
-  xTaskCreate(StartMonitor, "Monitor", 512, NULL, tskIDLE_PRIORITY + 1, NULL);
+## Build / configuration checklist
+- In STM32CubeIDE enable USART1 on PA9/PA10, generated HAL files.
+- Add FreeRTOS sources or use CMSIS-RTOS integration.
+- Ensure FreeRTOSConfig.h contains the options above.
+- If using DWT for run-time stats, remove code that disables DWT (some debug builds do).
+- Set optimization to O0/O1 for predictable timing while testing.
 
-  /* Start scheduler */
-  vTaskStartScheduler();
+Terminal settings
+- 115200 baud, 8 data bits, no parity, 1 stop bit (8N1), no flow control.
 
-  /* Should never reach here */
-  while (1) {}
-}
+ How this demonstrates scheduler behavior
+- With TaskA and TaskB both priority 1 and configUSE_TIME_SLICING == 1 they will time-slice round-robin.
+- TaskHigh at priority 2 will preempt them when ready demonstrating priority-based scheduling.
+- Monitor prints vTaskList showing each task state, priority, and stack high water mark. Run-time stats show CPU percentage per task if enabled.
+ 
+## Issues and their debugging	 
+## Checklist	 
+- Verify STM32F411CEU6 board powered via USB and recognized in STM32CubeIDE
+- Confirm FreeRTOS source added and linked correctly in the project
+- Enable USE_PREEMPTION and USE_TIME_SLICING in FreeRTOSConfig.h
+- Enable UART1 on PA9/PA10 in CubeMX or code
+- Set baud rate to 115200, 8N1, no flow control
+- Add INCLUDE_vTaskList and INCLUDE_vTaskGetRunTimeStats macros
+- Initialize DWT counter if using runtime stats
+- Create and verify 3 user tasks (TaskA, TaskB, TaskHigh) and one Monitor task
+- Ensure stack sizes sufficient (≥128 words each)
+- Build project with no errors or warnings
+- Flash code to STM32F411CEU6 using ST-Link
+- Open serial terminal (PuTTY/MobaXterm) at 115200 baud
+- Observe round-robin switching between equal-priority tasks
+- Verify higher-priority task preempts lower-priority ones
+- Confirm Monitor task periodically prints task list and CPU usage
+- Save UART output logs for report or proof
 
-/* Task implementations */
-void StartTaskA(void *argument)
-{
-  for (;;)
-  {
-    uart_printf("[TaskA] running\n");
-    /* Do some work to occupy CPU for a short time */
-    for (volatile uint32_t i = 0; i < 50000; ++i) __asm volatile("nop");
-    /* yield to allow time-slice switch when same priority tasks exist */
-    taskYIELD();
-    vTaskDelay(pdMS_TO_TICKS(200)); /* friendly delay so Monitor can run */
-  }
-}
+## Artifacts
+- Firmware binary: FreeRTOS_Scheduler.hex or .bin file generated after build
+- UART output log: Captured terminal session showing task switching, task list, and runtime stats
 
-void StartTaskB(void *argument)
-{
-  for (;;)
-  {
-    uart_printf("[TaskB] running\n");
-    for (volatile uint32_t i = 0; i < 50000; ++i) __asm volatile("nop");
-    taskYIELD();
-    vTaskDelay(pdMS_TO_TICKS(200));
-  }
-}
+Project screenshots:
+- STM32CubeIDE FreeRTOS task configuration
+- UART terminal output displaying live scheduler data
 
-void StartTaskHigh(void *argument)
-{
-  for (;;)
-  {
-    uart_printf("[TaskHigh] HIGH priority running\n");
-    /* longer busy work to demonstrate preemption */
-    for (volatile uint32_t i = 0; i < 150000; ++i) __asm volatile("nop");
-    vTaskDelay(pdMS_TO_TICKS(500)); /* periodic high priority work */
-  }
-}
+Source code files:
+- main.c
+- FreeRTOSConfig.h
+- freertos.c / tasks.c / timers.c
+- Connection diagram: STM32F411 ↔ USB-UART converter wiring
+- Execution video (optional): short clip showing serial monitor output updating in real time
+- Documentation: brief report summarizing objective, setup, observations, and result
 
-/* Monitor task: prints task list and optional run-time stats every 1s */
-void StartMonitor(void *argument)
-{
-  char tlist[VTASKLIST_BUF];
-  char rbuf[RUNTIME_BUF];
+Copy into STM32CubeIDE FreeRTOS project and enable the listed FreeRTOSConfig options.
 
-  uart_printf("Monitor started. Showing task list every 1000 ms.\r\n");
-
-  for (;;)
-  {
-    /* vTaskList produces an ASCII table if configINCLUDE_vTaskList == 1 */
-#if (INCLUDE_vTaskList == 1)
-    memset(tlist, 0, sizeof(tlist));
-    vTaskList(tlist); /* writes human-readable table to buffer */
-    uart_printf("----- Task List -----\r\n%s\r\n", tlist);
-#else
-    uart_printf("vTaskList not included in FreeRTOSConfig.h\r\n");
-#endif
-
-    /* Optional: run-time stats if enabled (configGENERATE_RUN_TIME_STATS) */
-#if (configGENERATE_RUN_TIME_STATS == 1) && (INCLUDE_vTaskGetRunTimeStats == 1)
-    memset(rbuf,0,sizeof(rbuf));
-    vTaskGetRunTimeStats(rbuf); /* writes runtime stats to buffer */
-    uart_printf("----- Run-time Stats -----\r\n%s\r\n", rbuf);
-#else
-    uart_printf("Run-time stats not enabled in FreeRTOSConfig.h\r\n");
-#endif
-
-    uart_printf("---------------------------\r\n");
-    vTaskDelay(pdMS_TO_TICKS(1000));
-  }
-}
-
-/* Minimal UART printf */
-#include <stdarg.h>
-static void uart_printf(const char *fmt, ...)
-{
-  char buf[PRINTF_BUF];
-  va_list args;
-  va_start(args, fmt);
-  int len = vsnprintf(buf, sizeof(buf)-1, fmt, args);
-  va_end(args);
-  if (len > 0)
-  {
-    HAL_UART_Transmit(&huart1, (uint8_t*)buf, (uint16_t)len, HAL_MAX_DELAY);
-  }
-}
-
-/* USART1 init (PA9 TX, PA10 RX) */
-static void MX_USART1_UART_Init(void)
-{
-  huart1.Instance = USART1;
-  huart1.Init.BaudRate = 115200;
-  huart1.Init.WordLength = UART_WORDLENGTH_8B;
-  huart1.Init.StopBits = UART_STOPBITS_1;
-  huart1.Init.Parity = UART_PARITY_NONE;
-  huart1.Init.Mode = UART_MODE_TX_RX;
-  huart1.Init.HwFlowCtl = UART_HWCONTROL_NONE;
-  huart1.Init.OverSampling = UART_OVERSAMPLING_16;
-  if (HAL_UART_Init(&huart1) != HAL_OK)
-  {
-    /* Init Error */
-    while (1);
-  }
-}
-
-/* SystemClock_Config: use your usual cube-generated code here */
-static void SystemClock_Config(void)
-{
-  /* Placeholder. Copy the SystemClock_Config generated by CubeMX/CubeIDE for STM32F411CEU6 */
-}
-
-/* Override HAL_UART_MspInit if needed to enable GPIO clocks and NVIC for USART1 */
